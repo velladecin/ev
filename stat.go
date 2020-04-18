@@ -16,55 +16,83 @@ type FSObject struct {
     exists, isFile, strict  bool            // file, dir only
     ctime                   int64
     frequency               int
-    frequencyDuration       time.Duration
-    callback                func()
+    frequencyDuration       time.Duration   // frequency converted to Duration
+    callback                func(string)
 }
 
-func (fso *FSObject) Notify() {
+/*
+type FSNotify struct {
+    path                    string
+    exists, isFile          bool
+    ctime                   int64
 }
+*/
 
-func (fso *FSObject) Watch() {
+func (fso *FSObject) Notify(notify chan bool) {
+    ch := make(chan bool)
+
+    go fso.watch(ch)
     go func() {
-        for {
-            start := time.Now()
-
-            exists, isFile, ctime, err := stat(fso.path)
-            if (err != nil) {
-                // do nothing
-                // TODO log
-                fmt.Printf("stat() on %s failed with: %s", fso.path, err)
-            } else {
-                callCallback := false
-
-                if exists != fso.exists {
-                    fso.exists = exists
-                    callCallback = true
-                }
-
-                if isFile != fso.isFile {
-                    fso.isFile= isFile
-                    callCallback = true
-                }
-
-                if ctime != fso.ctime {
-                    fso.ctime = ctime
-                    callCallback = true
-                }
-
-                if callCallback {
-                    fmt.Println(">>>>>>>>>>>>> Callback>>>>>>")
-                    fso.callback()
-                }
+        for changed := range ch {
+            if changed {
+                notify <- changed
             }
-
-            end := time.Now()
-            elapsed := end.Sub(start)
-            time.Sleep(fso.frequencyDuration - elapsed)
         }
     }()
 }
 
-func Stat(path string, frequency int, strict bool, fn func()) (*FSObject, error) {
+func (fso *FSObject) Run() {
+    ch := make(chan bool)
+
+    go fso.watch(ch)
+    go func() {
+        for changed := range ch {
+            if changed {
+                fso.callback(fso.path)
+            }
+        }
+    }()
+}
+
+func (fso *FSObject) watch(ch chan bool) {
+    for {
+        start := time.Now()
+
+        exists, isFile, ctime, err := stat(fso.path)
+        if (err != nil) {
+            // do nothing
+            // TODO log
+            fmt.Printf("stat() on %s failed with: %s", fso.path, err)
+        } else {
+            callback := false
+
+            if exists != fso.exists {
+                fso.exists = exists
+                callback = true
+            }
+
+            if isFile != fso.isFile {
+                fso.isFile= isFile
+                callback = true
+            }
+
+            if ctime != fso.ctime {
+                fso.ctime = ctime
+                callback = true
+            }
+
+            if callback {
+                ch <- true
+            }
+        }
+
+        end := time.Now()
+        elapsed := end.Sub(start)
+        time.Sleep(fso.frequencyDuration - elapsed)
+    }
+}
+
+func Stat(path string, frequency int, strict bool, fn func(string)) (*FSObject, error) {
     if (frequency < 1) {
         frequency = FREQUENCY
     }
