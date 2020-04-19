@@ -17,16 +17,8 @@ type FSObject struct {
     ctime                   int64
     frequency               int
     frequencyDuration       time.Duration   // frequency converted to Duration
-    callback                func(string)
+    callback                func([]interface{})
 }
-
-/*
-type FSNotify struct {
-    path                    string
-    exists, isFile          bool
-    ctime                   int64
-}
-*/
 
 func (fso *FSObject) Notify(notify chan bool) {
     ch := make(chan bool)
@@ -48,7 +40,7 @@ func (fso *FSObject) Run() {
     go func() {
         for changed := range ch {
             if changed {
-                fso.callback(fso.path)
+                fso.callback([]interface{}{fso.path})
             }
         }
     }()
@@ -92,7 +84,7 @@ func (fso *FSObject) watch(ch chan bool) {
     }
 }
 
-func Stat(path string, frequency int, strict bool, fn func(string)) (*FSObject, error) {
+func Stat(path string, frequency int, strict bool, fn func([]interface{})) (*FSObject, error) {
     if (frequency < 1) {
         frequency = FREQUENCY
     }
